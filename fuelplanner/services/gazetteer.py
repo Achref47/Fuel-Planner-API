@@ -24,6 +24,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from .geometry import chord_to_miles, unit_vectors
 from .text import normalize_name, place_key, strip_place_suffix
 
 GAZETTEER_COLUMNS = ["key", "kind", "name", "state", "lat", "lon", "source"]
@@ -187,49 +188,113 @@ def write_gazetteer(places: Iterable[Place], path: Path) -> int:
     return count
 
 
-def iter_gazetteer(path: Path) -> Iterator[Place]:
+def _check_exists(path: Path) -> Path:
     path = Path(path)
     if not path.exists():
         raise GazetteerNotFoundError(
             f"Gazetteer file not found: {path}. It ships with the repository; "
             "rebuild it with `python manage.py build_gazetteer`."
         )
-    with _open_text(path, "r") as handle:
-        for row in csv.DictReader(handle):
-            yield Place(
-                row["key"],
-                row["kind"],
-                row["name"],
-                row["state"],
-                float(row["lat"]),
-                float(row["lon"]),
-                row["source"],
+    return path
+
+
+def _iter_raw_rows(path: Path) -> Iterator[list[str]]:
+    with _open_text(_check_exists(path), "r") as handle:
+        reader = csv.reader(handle)
+        header = next(reader, None)
+        if header != GAZETTEER_COLUMNS:
+            raise GazetteerNotFoundError(
+                f"{path} is not a valid gazetteer file (unexpected columns {header}); "
+                "rebuild it with `python manage.py build_gazetteer`."
             )
+        yield from reader
+
+
+def _to_place(row) -> Place:
+    key, kind, name, state, lat, lon, source = row
+    return Place(key, kind, name, state, float(lat), float(lon), source)
+
+
+def iter_gazetteer(path: Path) -> Iterator[Place]:
+    for row in _iter_raw_rows(path):
+        yield _to_place(row)
 
 
 class Gazetteer:
-    """In-memory lookup over the condensed gazetteer file."""
+    """In-memory lookup over the condensed gazetteer file.
 
-    def __init__(self, places: Iterable[Place]):
-        self._places: dict[str, Place] = {}
-        self._zips: dict[str, Place] = {}
+    Rows loaded from a file are kept as raw strings and converted to ``Place`` objects only
+    when looked up, which keeps the one-off load of ~265k rows to a fraction of a second.
+    """
+
+    def __init__(self, places: Iterable[Place] = ()):
+        self._places: dict[str, Place | list[str]] = {}
+        self._zips: dict[str, Place | list[str]] = {}
         for p in places:
             (self._zips if p.kind == "zip" else self._places)[p.key] = p
+        self._tree = None
 
     @classmethod
     def from_file(cls, path: Path) -> Gazetteer:
-        return cls(iter_gazetteer(path))
+        gazetteer = cls()
+        for row in _iter_raw_rows(path):
+            (gazetteer._zips if row[1] == "zip" else gazetteer._places)[row[0]] = row
+        return gazetteer
 
     def __len__(self) -> int:
         return len(self._places) + len(self._zips)
 
+    @staticmethod
+    def _get(table: dict, key: str) -> Place | None:
+        value = table.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, Place):
+            value = table[key] = _to_place(value)
+        return value
+
     def find_city(self, city: str, state: str) -> Place | None:
         """Look a city up by name and 2-letter state, trying known aliases."""
         key = place_key(state, city)
-        return self._places.get(key) or self._places.get(PLACE_ALIASES.get(key, ""))
+        return self._get(self._places, key) or self._get(self._places, PLACE_ALIASES.get(key, ""))
 
     def find_zip(self, zip_code: str) -> Place | None:
-        return self._zips.get(zip_code.strip()[:5].zfill(5))
+        return self._get(self._zips, zip_code.strip()[:5].zfill(5))
+
+    def nearest_place_miles(self, lat: float, lon: float) -> float | None:
+        """Great-circle distance to the closest named place (None for an empty gazetteer)."""
+        if self._tree is None:
+            if not self._places:
+                return None
+            from scipy.spatial import cKDTree
+
+            coords = [
+                (v.lat, v.lon) if isinstance(v, Place) else (float(v[4]), float(v[5]))
+                for v in self._places.values()
+            ]
+            lats, lons = zip(*coords, strict=True)
+            self._tree = cKDTree(unit_vectors(lats, lons))
+        chord, _ = self._tree.query(unit_vectors([lat], [lon])[0])
+        return float(chord_to_miles(chord))
+
+
+_shared: dict[Path, Gazetteer] = {}
+
+
+def get_gazetteer(path: Path | None = None) -> Gazetteer:
+    """The process-wide gazetteer (loaded on first use from ``GAZETTEER_PATH``)."""
+    if path is None:
+        from django.conf import settings
+
+        path = settings.FUEL_PLANNER["GAZETTEER_PATH"]
+    path = Path(path)
+    if path not in _shared:
+        _shared[path] = Gazetteer.from_file(path)
+    return _shared[path]
+
+
+def reset_gazetteer_cache() -> None:
+    _shared.clear()
 
 
 __all__ = [
@@ -239,8 +304,10 @@ __all__ = [
     "GazetteerNotFoundError",
     "Place",
     "build_place_records",
+    "get_gazetteer",
     "iter_gazetteer",
     "normalize_name",
     "read_pipe_table",
+    "reset_gazetteer_cache",
     "write_gazetteer",
 ]
