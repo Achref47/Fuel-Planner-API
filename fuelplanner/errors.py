@@ -20,3 +20,17 @@ class PlannerError(Exception):
 class FuelDataUnavailableError(PlannerError):
     code = "fuel_data_unavailable"
     http_status = 503
+
+
+class NoFeasiblePlanError(PlannerError):
+    """The destination cannot be reached with the available stations and vehicle range."""
+
+    code = "no_feasible_fuel_plan"
+    http_status = 422
+
+
+class PlanInvariantError(PlannerError):
+    """A computed plan failed its own consistency checks (a bug, never user error)."""
+
+    code = "plan_invariant_violation"
+    http_status = 500
