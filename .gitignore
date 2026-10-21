@@ -1,0 +1,31 @@
+# Python / virtual environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Databases
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3
+
+# Assessment dataset: redistribution permission is not established, so the real
+# CSV is never committed. Reviewers place their own copy in data/ (see README).
+data/*.csv
+!data/sample/*.csv
+data/raw/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
