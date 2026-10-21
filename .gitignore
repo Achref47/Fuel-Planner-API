@@ -29,3 +29,6 @@ data/raw/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Derived reports from the restricted dataset
+data/import_report.json

@@ -1,0 +1,10 @@
+key,kind,name,state,lat,lon,source
+IL|chicago,place,Chicago,IL,41.83690,-87.68470,place
+MO|stlouis,place,St. Louis,MO,38.63530,-90.24470,place
+TX|dallas,place,Dallas,TX,32.79230,-96.76670,place
+TX|houston,place,Houston,TX,29.78720,-95.39350,place
+NV|carsoncity,place,Carson City,NV,39.15100,-119.74600,place
+AR|hotsprings,place,Hot Springs,AR,34.48000,-93.05500,place
+OK|southcoffeyville,place,South Coffeyville,OK,36.99300,-95.60500,place
+PA|harrisburg,place,Harrisburg,PA,40.27450,-76.88440,gnis
+60601,zip,60601,,41.88500,-87.62200,zcta
