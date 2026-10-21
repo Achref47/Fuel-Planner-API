@@ -10,6 +10,7 @@ from django.db import transaction
 from fuelplanner.importer import DatasetError, clean_and_geocode, read_rows
 from fuelplanner.models import Station
 from fuelplanner.services.gazetteer import Gazetteer, GazetteerNotFoundError
+from fuelplanner.services.stations import reset_station_index
 
 
 class Command(BaseCommand):
@@ -79,6 +80,7 @@ class Command(BaseCommand):
                 ],
                 batch_size=500,
             )
+        reset_station_index()
         self.stdout.write(self.style.SUCCESS(f"Imported {len(stations):,} stations."))
 
     def _print_summary(self, summary: dict, report_path: Path) -> None:
