@@ -1,10 +1,8 @@
-import os
+from pathlib import Path
 
-os.environ.setdefault("DJANGO_DEBUG", "true")
-
-from pathlib import Path  # noqa: E402
-
-import pytest  # noqa: E402
+import pytest
+import responses
+from rest_framework.test import APIClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -34,3 +32,15 @@ def _isolate_process_state(settings):
     yield
     for reset in (cache.clear, reset_gazetteer_cache, reset_routing_provider, reset_station_index):
         reset()
+
+
+@pytest.fixture
+def client():
+    return APIClient()
+
+
+@pytest.fixture
+def http():
+    """Mock every outgoing HTTP request; a test that forgets to register one fails loudly."""
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        yield rsps

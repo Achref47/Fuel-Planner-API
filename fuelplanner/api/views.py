@@ -9,10 +9,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..services import callcount
-from ..services.gazetteer import GazetteerNotFoundError, get_gazetteer
 from ..services.planner import plan_trip
 from ..services.routing import get_routing_provider
-from ..services.stations import load_station_index
+from ..services.warmup import warm_up
 from .presenters import build_geojson, build_payload
 from .serializers import FuelRouteRequestSerializer
 
@@ -45,7 +44,7 @@ class FuelRouteView(APIView):
         payload = build_payload(
             trip,
             geometry_mode=options["geometry"],
-            elapsed_ms=(time.perf_counter() - started) * 1000,
+            started=started,
             calls=calls,
         )
         logger.info(
@@ -64,20 +63,15 @@ class HealthView(APIView):
     throttle_classes: list = []
 
     def get(self, request):
-        started = time.perf_counter()
-        stations = len(load_station_index())
-        try:
-            places = len(get_gazetteer())
-        except GazetteerNotFoundError:
-            places = 0
-        ready = stations > 0
+        loaded = warm_up()
+        ready = loaded["stations_loaded"] > 0
         body = {
             "status": "ok" if ready else "unavailable",
-            "stations_loaded": stations,
-            "gazetteer_places": places,
+            "stations_loaded": loaded["stations_loaded"],
+            "gazetteer_places": loaded["gazetteer_places"],
             "routing_provider": get_routing_provider().name,
             "django_version": django.get_version(),
-            "check_ms": round((time.perf_counter() - started) * 1000),
+            "check_ms": loaded["warmup_ms"],
         }
         if not ready:
             body["message"] = (

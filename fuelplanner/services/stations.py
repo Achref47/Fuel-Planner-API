@@ -54,6 +54,14 @@ class StationIndex:
     def __len__(self) -> int:
         return len(self.stations)
 
+    def require_data(self) -> None:
+        """Raise ``FuelDataUnavailableError`` if no stations have been loaded."""
+        if not self.stations:
+            raise FuelDataUnavailableError(
+                "No fuel stations are loaded. Run `python manage.py load_fuel_data` first "
+                "(see the README for where to place the dataset)."
+            )
+
     def candidates_along(self, route: RoutePath, max_detour_miles: float) -> list[Candidate]:
         """Stations within ``max_detour_miles`` of the route, ordered by route mile.
 
@@ -64,11 +72,7 @@ class StationIndex:
         Stations at identical coordinates are collapsed to the cheapest one (the others can
         never be a better choice: same place, higher price); ties go to the lowest id.
         """
-        if not self.stations:
-            raise FuelDataUnavailableError(
-                "No fuel stations are loaded. Run `python manage.py load_fuel_data` first "
-                "(see the README for where to place the dataset)."
-            )
+        self.require_data()
         if max_detour_miles < 0:
             raise ValueError("max_detour_miles must be >= 0")
 
@@ -98,30 +102,47 @@ _index_cache: StationIndex | None = None
 
 
 def load_station_index(*, refresh: bool = False) -> StationIndex:
-    """Build (once per process) the index from the database."""
-    global _index_cache
-    if _index_cache is None or refresh:
-        from ..models import Station
+    """Build (once per process) the index from the database.
 
-        rows = Station.objects.all().iterator()
-        _index_cache = StationIndex(
-            [
-                StationRecord(
-                    opis_id=s.opis_id,
-                    name=s.name,
-                    address=s.address,
-                    city=s.city,
-                    state=s.state,
-                    price=s.price,
-                    latitude=s.latitude,
-                    longitude=s.longitude,
-                    location_precision=s.location_precision,
-                    location_source=s.location_source,
-                )
-                for s in rows
-            ]
-        )
-    return _index_cache
+    An empty table is never cached, so a server that started before ``load_fuel_data`` was run
+    picks the data up on the next request. After re-importing, restart the server to refresh a
+    non-empty index.
+    """
+    global _index_cache
+    if _index_cache is not None and not refresh:
+        return _index_cache
+
+    from django.db import DatabaseError
+
+    from ..models import Station
+
+    try:
+        records = [
+            StationRecord(
+                opis_id=s.opis_id,
+                name=s.name,
+                address=s.address,
+                city=s.city,
+                state=s.state,
+                price=s.price,
+                latitude=s.latitude,
+                longitude=s.longitude,
+                location_precision=s.location_precision,
+                location_source=s.location_source,
+            )
+            for s in Station.objects.all().iterator()
+        ]
+    except DatabaseError as exc:
+        raise FuelDataUnavailableError(
+            "The station database is not ready. Run `python manage.py migrate` and "
+            "`python manage.py load_fuel_data` (see the README).",
+            {"reason": "database_not_ready"},
+        ) from exc
+
+    index = StationIndex(records)
+    if records:
+        _index_cache = index
+    return index
 
 
 def reset_station_index() -> None:

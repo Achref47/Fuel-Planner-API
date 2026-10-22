@@ -9,9 +9,12 @@ full precision, and the total is the sum of the cent-rounded stop costs):
 
 from __future__ import annotations
 
+import hashlib
+import time
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
+from django.core.cache import cache
 
 from ..services.geometry import simplify_route
 from ..services.planner import TripPlan
@@ -49,12 +52,24 @@ def _location(loc) -> dict:
     }
 
 
+def _simplified(coords, tolerance_miles: float):
+    """Simplify a route, remembering the result: simplification costs tens of milliseconds, and
+    a cached route should not pay for it on every request."""
+    digest = hashlib.sha256(coords.tobytes()).hexdigest()[:32]
+    key = f"fuelplanner:simplified:{digest}:{tolerance_miles}"
+    simple = cache.get(key)
+    if simple is None:
+        simple = simplify_route(coords, tolerance_miles)
+        cache.set(key, simple, settings.FUEL_PLANNER["ROUTE_CACHE_SECONDS"])
+    return simple
+
+
 def _geometry(trip: TripPlan, mode: str):
     if mode == "none":
         return None, 0
     coords = trip.route.coordinates
     if mode == "simplified":
-        coords = simplify_route(coords, settings.FUEL_PLANNER["GEOMETRY_TOLERANCE_MILES"])
+        coords = _simplified(coords, settings.FUEL_PLANNER["GEOMETRY_TOLERANCE_MILES"])
     rounded = [[round(float(lon), 5), round(float(lat), 5)] for lon, lat in coords]
     return {"type": "LineString", "coordinates": rounded}, len(rounded)
 
@@ -86,7 +101,9 @@ def assumptions(trip: TripPlan) -> list[str]:
     return items
 
 
-def build_payload(trip: TripPlan, *, geometry_mode: str, elapsed_ms: float, calls: dict) -> dict:
+def build_payload(trip: TripPlan, *, geometry_mode: str, started: float, calls: dict) -> dict:
+    """``started`` is the ``time.perf_counter()`` value when the request began; the reported
+    ``elapsed_ms`` therefore includes building this very payload (geometry and all)."""
     cfg = settings.FUEL_PLANNER
     ledger = trip.ledger
     geometry, geometry_points = _geometry(trip, geometry_mode)
@@ -150,7 +167,7 @@ def build_payload(trip: TripPlan, *, geometry_mode: str, elapsed_ms: float, call
     }
 
     route_meta = trip.route
-    return {
+    payload = {
         "start": _location(trip.start),
         "finish": _location(trip.finish),
         "route": {
@@ -179,10 +196,12 @@ def build_payload(trip: TripPlan, *, geometry_mode: str, elapsed_ms: float, call
             },
             "candidate_stations": len(trip.candidates),
             "max_detour_miles": trip.max_detour_miles,
-            "elapsed_ms": round(elapsed_ms),
+            "elapsed_ms": 0,  # filled in below, once everything else is built
             "attribution": f"{route_meta.attribution} {DATA_ATTRIBUTION}",
         },
     }
+    payload["meta"]["elapsed_ms"] = round((time.perf_counter() - started) * 1000)
+    return payload
 
 
 def build_geojson(payload: dict) -> dict:

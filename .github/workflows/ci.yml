@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Django checks
+        run: |
+          python manage.py check --settings=config.settings_test
+          python manage.py makemigrations --check --dry-run --settings=config.settings_test
+
+      # The assessment CSV is not in the repository, so the tests that need it skip themselves;
+      # everything else runs against the small synthetic fixtures. No network access is used.
+      - name: Tests with coverage
+        run: pytest --cov --cov-fail-under=95

@@ -80,6 +80,11 @@ def build_ledger(
     def violation(message: str) -> PlanInvariantError:
         return PlanInvariantError(f"Internal consistency check failed: {message}")
 
+    # Every leg is at most one tank: the vehicle never carries more than ``max_range`` miles of
+    # fuel (checked here and after each purchase) and never runs dry (checked after each leg).
+    if not -TOLERANCE <= fuel <= max_range + TOLERANCE:
+        raise violation(f"starting fuel {fuel:.3f} mi is outside the 0-{max_range} mi tank")
+
     for number, planned in enumerate(plan.stops, start=1):
         candidate = candidates[planned.option_index]
         leg = planned.distance_from_previous_miles
@@ -98,8 +103,6 @@ def build_ledger(
         fuel += max(planned.purchase_miles, 0.0)
         if fuel > max_range + TOLERANCE:
             raise violation(f"tank overfilled at stop {number} ({fuel:.6f} > {max_range} mi)")
-        if leg > max_range + TOLERANCE:
-            raise violation(f"leg {number} is {leg:.1f} mi, over the {max_range} mi range")
 
         price = candidate.station.price
         gallons = _gallons(max(planned.purchase_miles, 0.0), mpg)
@@ -125,8 +128,6 @@ def build_ledger(
     fuel -= final_leg
     if fuel < -TOLERANCE:
         raise violation(f"ran out of fuel before the destination ({fuel:.6f} mi)")
-    if final_leg > max_range + TOLERANCE and plan.stops:
-        raise violation(f"final leg is {final_leg:.1f} mi, over the {max_range} mi range")
     fuel = max(fuel, 0.0)
     legs.append(
         LegAccount(len(legs) + 1, previous_label, "finish", final_leg, _gallons(final_leg, mpg))
@@ -137,7 +138,9 @@ def build_ledger(
     used = _gallons(driving, mpg)
     bought = _gallons(purchased_miles, mpg)
     remaining = _gallons(fuel, mpg)
-    if abs(float(initial + bought - used - remaining)) > TOLERANCE:
+    if abs(float(initial + bought - used - remaining)) > TOLERANCE:  # pragma: no cover
+        # Defensive: the simulation above makes this an identity, so it can only fire if the
+        # bookkeeping itself is broken.
         raise violation("fuel does not reconcile (initial + purchased - used != remaining)")
     if driving + EPS < route_length - TOLERANCE:
         raise violation("driving distance is shorter than the route")

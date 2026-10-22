@@ -58,9 +58,6 @@ class LocationField(serializers.Field):
             return coords
         self.fail("invalid_type")
 
-    def to_representation(self, value):
-        return value
-
 
 def _planner_setting(name):
     return settings.FUEL_PLANNER[name]

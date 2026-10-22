@@ -1,11 +1,20 @@
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
+DJANGO_SETTINGS_MODULE = "config.settings_test"
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra -q -m 'not live'"
 markers = [
     "live: hits real external services; excluded from the default run (use -m live).",
 ]
+
+[tool.coverage.run]
+source = ["fuelplanner", "config"]
+omit = ["*/migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover"]
 
 [tool.ruff]
 line-length = 100

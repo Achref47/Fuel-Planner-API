@@ -45,7 +45,7 @@ def api_exception_handler(exc, context):
 
     response = exception_handler(exc, context)  # sets headers such as Allow / Retry-After
     if response is None:
-        logger.exception("unhandled error in %s", context["view"].__class__.__name__)
+        logger.error("unhandled error in %s", context["view"].__class__.__name__, exc_info=exc)
         return Response(
             error_body("internal_error", "An unexpected error occurred. Please try again."),
             status=500,

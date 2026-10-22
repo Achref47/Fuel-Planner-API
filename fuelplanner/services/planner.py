@@ -63,13 +63,18 @@ def plan_trip(
             {"start": start.label, "finish": finish.label},
         )
 
+    initial_fuel_miles = initial_fuel_fraction * max_range
+    if haversine_miles(start.lat, start.lon, finish.lat, finish.lon) > initial_fuel_miles + EPS:
+        # A road is never shorter than the straight line, so refuelling is certain: check the
+        # station data now and fail fast, before spending a routing request.
+        load_station_index().require_data()
+
     lookup = get_route((start.lat, start.lon), (finish.lat, finish.lon))
     route = lookup.route
     path = resample_route(
         route.coordinates, cfg["RESAMPLE_STEP_MILES"], total_miles=route.distance_miles
     )
 
-    initial_fuel_miles = initial_fuel_fraction * max_range
     # Stations only matter when the starting fuel cannot cover the whole route, so a short
     # trip is answered correctly ($0, no stops) even before any fuel data has been loaded.
     needs_fuel = path.length > initial_fuel_miles + EPS

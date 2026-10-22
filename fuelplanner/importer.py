@@ -8,6 +8,7 @@ the gazetteer is left out of the result and listed in the report.
 from __future__ import annotations
 
 import csv
+import io
 from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -114,6 +115,7 @@ class ImportReport:
     us_stations: int = 0
     stations_with_price_changes: int = 0
     stations_with_name_variants: int = 0
+    stations_with_conflicting_locations: int = 0
     matched_stations: int = 0
     matched_by_source: Counter = field(default_factory=Counter)
     unmatched: list[dict] = field(default_factory=list)
@@ -128,6 +130,7 @@ class ImportReport:
             "us_stations": self.us_stations,
             "stations_with_multiple_prices": self.stations_with_price_changes,
             "stations_with_name_variants": self.stations_with_name_variants,
+            "stations_with_conflicting_locations": self.stations_with_conflicting_locations,
             "matched_stations": self.matched_stations,
             "matched_percent": pct,
             "matched_by_source": dict(self.matched_by_source),
@@ -154,15 +157,27 @@ def read_rows(csv_path: Path) -> list[dict[str, str]]:
             "file at data/fuel-prices-for-be-assessment.csv, or set FUEL_CSV_PATH in .env / pass "
             "--csv <path>."
         )
-    with open(csv_path, encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        missing = [c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
-        if missing:
-            raise DatasetError(
-                f"{csv_path} is missing expected column(s): {', '.join(missing)}. "
-                f"Expected: {', '.join(REQUIRED_COLUMNS)}."
-            )
-        return [{k: (v or "").strip() for k, v in row.items() if k} for row in reader]
+    raw = csv_path.read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # A spreadsheet export in a Windows code page: decode leniently rather than fail.
+        text = raw.decode("cp1252", errors="replace")
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    missing = [c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
+    if missing:
+        raise DatasetError(
+            f"{csv_path} is missing expected column(s): {', '.join(missing)}. "
+            f"Expected: {', '.join(REQUIRED_COLUMNS)}."
+        )
+    rows = []
+    for raw in reader:
+        row = {k: (v or "").strip() for k, v in raw.items() if k}
+        # Too many fields (an unquoted comma) or too few: the columns cannot be trusted.
+        if None in raw or any(v is None for v in raw.values()):
+            row["_malformed"] = "1"
+        rows.append(row)
+    return rows
 
 
 def clean_and_geocode(
@@ -181,6 +196,9 @@ def clean_and_geocode(
     seen_rows: set[tuple] = set()
 
     for row in rows:
+        if row.get("_malformed"):
+            report.rejected_rows["malformed_row"] += 1
+            continue
         state = row["State"].upper()
         if state in CANADIAN_PROVINCES:
             report.canadian_rows += 1
@@ -215,6 +233,9 @@ def clean_and_geocode(
             report.stations_with_price_changes += 1
         if len({m["Truckstop Name"] for m in members}) > 1:
             report.stations_with_name_variants += 1
+        if len({(m["Address"], m["City"], m["_state"]) for m in members}) > 1:
+            # Never observed in the supplied data; the first row's location is used.
+            report.stations_with_conflicting_locations += 1
         place = gazetteer.find_city(first["City"], first["_state"])
         if place is None:
             report.unmatched.append(

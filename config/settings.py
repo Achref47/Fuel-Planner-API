@@ -73,10 +73,14 @@ TIME_ZONE = "UTC"
 USE_I18N = False
 USE_TZ = True
 
+# In-process cache for routes and address look-ups. A cached coast-to-coast route is ~0.5 MB,
+# so the entry cap bounds memory; use Redis / Memcached / a file cache for a multi-process or
+# larger deployment (change BACKEND here - the code only uses django.core.cache).
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
         "LOCATION": "fuelplanner-cache",
+        "OPTIONS": {"MAX_ENTRIES": int(os.environ.get("CACHE_MAX_ENTRIES", "200"))},
     }
 }
 
