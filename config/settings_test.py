@@ -25,6 +25,7 @@ FUEL_PLANNER = {
     "CENSUS_GEOCODER_URL": "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress",
     "ROUTE_CACHE_SECONDS": 24 * 3600,
     "GEOCODE_CACHE_SECONDS": 30 * 24 * 3600,
+    "DATA_NOTICE": "",  # tests that need a notice set it themselves
 }
 
 CACHES = {"default": {**CACHES["default"], "LOCATION": "fuelplanner-tests"}}  # noqa: F405

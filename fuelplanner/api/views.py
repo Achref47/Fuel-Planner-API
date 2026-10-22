@@ -4,6 +4,7 @@ import logging
 import time
 
 import django
+from django.conf import settings
 from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -73,6 +74,8 @@ class HealthView(APIView):
             "django_version": django.get_version(),
             "check_ms": loaded["warmup_ms"],
         }
+        if notice := settings.FUEL_PLANNER.get("DATA_NOTICE"):
+            body["data_notice"] = notice
         if not ready:
             body["message"] = (
                 "No fuel stations are loaded. Run `python manage.py load_fuel_data` "

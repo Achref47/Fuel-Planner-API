@@ -44,6 +44,14 @@ if not SECRET_KEY:
         )
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1],testserver")
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+# Render provides the service's public host name; trust it without hand-editing settings.
+_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if _render_host:
+    if _render_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_render_host)
+    if f"https://{_render_host}" not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(f"https://{_render_host}")
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -59,6 +67,8 @@ MIDDLEWARE = [
 
 # HTTPS hardening for deployments (off by default because local development is plain HTTP).
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", False)
+# Platform health checks may arrive over plain HTTP inside the platform network.
+SECURE_REDIRECT_EXEMPT = [r"^api/v1/health/?$"]
 SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
@@ -168,4 +178,6 @@ FUEL_PLANNER = {
         "CENSUS_GEOCODER_URL", "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
     ),
     "CENSUS_TIMEOUT_SECONDS": float(os.environ.get("CENSUS_TIMEOUT_SECONDS", "10")),
+    # Non-empty on deployments that run on synthetic data: shown in every response.
+    "DATA_NOTICE": os.environ.get("DATA_NOTICE", "").strip(),
 }

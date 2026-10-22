@@ -19,10 +19,20 @@ from django.core.cache import cache
 from ..services.geometry import simplify_route
 from ..services.planner import TripPlan
 
-DATA_ATTRIBUTION = (
-    "Place coordinates: U.S. Census Bureau Gazetteer and USGS GNIS (public domain). "
-    "Fuel prices: supplied OPIS dataset."
+PLACES_ATTRIBUTION = (
+    "Place coordinates: U.S. Census Bureau Gazetteer and USGS GNIS (public domain)."
 )
+
+
+def data_notice() -> str:
+    """Set (``DATA_NOTICE``) on deployments that run on synthetic data, empty otherwise."""
+    return settings.FUEL_PLANNER.get("DATA_NOTICE", "")
+
+
+def data_attribution() -> str:
+    if notice := data_notice():
+        return f"{PLACES_ATTRIBUTION} {notice}"
+    return f"{PLACES_ATTRIBUTION} Fuel prices: supplied OPIS dataset."
 
 
 def _q(value: Decimal, places: str) -> float:
@@ -79,14 +89,19 @@ def assumptions(trip: TripPlan) -> list[str]:
     tank = Decimal(cfg["MAX_RANGE_MILES"]) / Decimal(cfg["MPG"])
     start_gal = tank * Decimal(trip.initial_fuel_fraction)
     items = [
+        *([f"DATA NOTICE: {data_notice()}"] if data_notice() else []),
         f"The vehicle starts with {start_gal.normalize():f} gallons "
         f"({trip.initial_fuel_fraction:.0%} of a {tank.normalize():f}-gallon tank); that fuel is "
         "not counted as a purchase, so trips within the starting range cost $0.00.",
         "Fuel is bought only as needed to minimise cost; the vehicle may reach a stop or the "
         "destination with an empty tank, and never exceeds the "
         f"{cfg['MAX_RANGE_MILES']:g}-mile range between refuelling points.",
-        "Each station's price is the lowest price listed for it in the supplied dataset, treated "
-        "as the current USD price per gallon.",
+        (
+            "Station prices are SYNTHETIC demo values, not real fuel prices."
+            if data_notice()
+            else "Each station's price is the lowest price listed for it in the supplied dataset, "
+            "treated as the current USD price per gallon."
+        ),
         "Station coordinates are not in the dataset: they are the centroid of the station's city "
         '(location_precision "city"), so a station can be a few miles from its marker.',
         f"Only stations within {trip.max_detour_miles:g} miles (straight line) of the route are "
@@ -197,9 +212,11 @@ def build_payload(trip: TripPlan, *, geometry_mode: str, started: float, calls: 
             "candidate_stations": len(trip.candidates),
             "max_detour_miles": trip.max_detour_miles,
             "elapsed_ms": 0,  # filled in below, once everything else is built
-            "attribution": f"{route_meta.attribution} {DATA_ATTRIBUTION}",
+            "attribution": f"{route_meta.attribution} {data_attribution()}",
         },
     }
+    if data_notice():
+        payload["meta"]["data_notice"] = data_notice()
     payload["meta"]["elapsed_ms"] = round((time.perf_counter() - started) * 1000)
     return payload
 

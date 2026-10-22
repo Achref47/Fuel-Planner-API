@@ -31,7 +31,8 @@ problem with exact money arithmetic, all with **one routing request per new trip
 [Postman](#postman) · [How it works](#how-it-works) · [The optimiser](#the-optimiser) ·
 [Tests and performance](#tests-and-performance) · [Limitations](#known-limitations)
 
-> The project runs locally; it is **not deployed** anywhere.
+> The project runs locally. A Render blueprint for a **public demo on synthetic data** is included
+> ([see below](#public-demo-on-render-synthetic-data)); no live URL exists until you deploy it.
 
 ---
 
@@ -43,16 +44,17 @@ problem with exact money arithmetic, all with **one routing request per new trip
 4. [Quick start (Windows)](#quick-start-windows)
 5. [Try the API](#try-the-api)
 6. [Postman](#postman)
-7. [API reference](#api-reference)
-8. [The optimiser](#the-optimiser)
-9. [The dataset](#the-dataset)
-10. [Configuration](#configuration)
-11. [Tests and performance](#tests-and-performance)
-12. [Design decisions and assumptions](#design-decisions-and-assumptions)
-13. [Known limitations](#known-limitations)
-14. [Project layout](#project-layout)
-15. [Troubleshooting](#troubleshooting)
-16. [Data sources, attribution and licensing](#data-sources-attribution-and-licensing)
+7. [Public demo on Render](#public-demo-on-render-synthetic-data)
+8. [API reference](#api-reference)
+9. [The optimiser](#the-optimiser)
+10. [The dataset](#the-dataset)
+11. [Configuration](#configuration)
+12. [Tests and performance](#tests-and-performance)
+13. [Design decisions and assumptions](#design-decisions-and-assumptions)
+14. [Known limitations](#known-limitations)
+15. [Project layout](#project-layout)
+16. [Troubleshooting](#troubleshooting)
+17. [Data sources, attribution and licensing](#data-sources-attribution-and-licensing)
 
 ---
 
@@ -109,6 +111,7 @@ flowchart LR
 **Web and API:** Python 3.12+ (developed on 3.13), Django 6.1, Django REST Framework 3.18, SQLite.<br>
 **Numerics and geospatial:** NumPy, SciPy (`cKDTree`), haversine geometry, Ramer–Douglas–Peucker route simplification.<br>
 **External services:** OSRM (routing), U.S. Census Geocoder (street addresses only), via `requests`.<br>
+**Deployment:** gunicorn, Render blueprint (`render.yaml`), environment-driven production settings.<br>
 **Quality:** pytest, pytest-django, pytest-cov, `responses` (HTTP mocking), ruff, GitHub Actions workflow.<br>
 **Configuration:** environment variables with `python-dotenv`.
 
@@ -193,6 +196,74 @@ calls) → wider detour → half-full start → Seattle → San Diego (the expli
 error) → a validation error. With the supplied dataset and live routing, Chicago → Dallas costs
 about $134 and New York → Los Angeles about $713 (8 stops, longest leg about 462 miles); small
 differences are normal if OpenStreetMap road data changes.
+
+---
+
+## Public demo on Render (synthetic data)
+
+The repository includes a [Render](https://render.com) Blueprint, [`render.yaml`](render.yaml), for
+a **public demo that runs on synthetic data only**. The private assessment CSV is never uploaded,
+referenced or required.
+
+> **The demo data is synthetic.** Stations are named "DEMO FUEL STOP #n", sit in real towns (from
+> the public place table) along a few example routes, and their prices are **invented** by a
+> deterministic formula. They are not real stations or real prices. Every API response from the
+> demo carries `meta.data_notice` and a first `assumptions` entry saying so, and
+> `/api/v1/health/` repeats it. The data lives in
+> [`data/demo/synthetic_stations.csv`](data/demo/synthetic_stations.csv) and is produced by
+> [`scripts/generate_demo_stations.py`](scripts/generate_demo_stations.py).
+
+**What the blueprint does**
+
+* Runs `pip install -r requirements.txt` (Python 3.13 from [`.python-version`](.python-version)).
+* At every start it runs `python manage.py migrate --noinput`, then
+  `python manage.py load_demo_data`, then `gunicorn` (one worker, four threads). Both commands
+  are idempotent, so repeated starts never duplicate stations, and a fresh filesystem is always
+  fully initialised.
+* Sets production environment variables: `DJANGO_DEBUG=false`, a **generated**
+  `DJANGO_SECRET_KEY` (never stored in the repository), `DJANGO_ALLOWED_HOSTS=.onrender.com`,
+  HTTPS redirect, proxy header trust, HSTS, and the `DATA_NOTICE` text. Render's own
+  `RENDER_EXTERNAL_HOSTNAME` is added to the allowed hosts and CSRF trusted origins
+  automatically; add `DJANGO_CSRF_TRUSTED_ORIGINS` yourself only for a custom domain.
+* Uses the health endpoint `/api/v1/health/` as the health check (it is exempt from the HTTPS
+  redirect so platform checks over plain HTTP succeed).
+
+**Deploy it (manual steps in the Render dashboard)**
+
+1. Push this repository to GitHub.
+2. In Render choose **New → Blueprint**, connect the repository and apply `render.yaml`
+   (free plan).
+3. Wait for the first deploy, then open `https://<your-service>.onrender.com/api/v1/health/`.
+   It should report `"status": "ok"`, 115 stations and the synthetic-data notice.
+
+**Test the live API** (replace the host with your service's URL):
+
+```bash
+curl -s https://<your-service>.onrender.com/api/v1/health/
+curl -s -X POST https://<your-service>.onrender.com/api/v1/fuel-route/ \
+  -H "Content-Type: application/json" \
+  -d '{"start": "Chicago, IL", "finish": "Dallas, TX", "options": {"geometry": "none"}}'
+```
+
+The Postman collection works unchanged: set its `base_url` variable to the Render URL.
+Demo-supported example trips include Chicago → Dallas, New York → Los Angeles, Seattle → San
+Diego, Miami → New York, Atlanta → Denver, Minneapolis → Houston and Boston → Chicago.
+
+**Free-tier behaviour and limitations**
+
+* **Ephemeral filesystem.** SQLite lives on the instance's disk and is rebuilt from the committed
+  synthetic data at every start, which is safe because the data is read-only demo data. Nothing a
+  user does persists, and the database is never a source of truth.
+* **Cold starts.** A free web service sleeps when idle; the first request afterwards waits for
+  the instance to start, run migrations and load the place table (several seconds).
+* **Shared rate limit.** Requests arrive through Render's proxy, so the per-IP rate limiter may
+  see many visitors as one client; the blueprint raises the limit to 600/min for that reason.
+* **Public OSRM.** The demo calls the free public OSRM server, which is best-effort and limited
+  to one request per second; a new trip can occasionally return a 503/504 (repeats are cached,
+  but the cache is per process and lost on restart).
+* **No paid infrastructure** is used or required. Not verified locally: the `gunicorn` process
+  itself (it does not run on Windows) and the Render dashboard steps; they have to be confirmed
+  on the first real deploy.
 
 ---
 
@@ -443,6 +514,8 @@ Settings come from environment variables, optionally loaded from a git-ignored `
 | `THROTTLE_RATE` | `120/min` | API rate limit per client IP. |
 | `LOG_LEVEL` | `INFO` | Logging level of the `fuelplanner` logger. |
 | `DATABASE_FILE` | `db.sqlite3` | SQLite file name. |
+| `DATA_NOTICE` | empty | Non-empty on synthetic-data deployments: added to every response and the health check. |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | empty | Extra trusted origins (Render's host is added automatically). |
 | `DJANGO_SECURE_SSL_REDIRECT` | `false` | Redirect HTTP to HTTPS (deployment behind TLS). |
 | `DJANGO_SECURE_HSTS_SECONDS` | `0` | HSTS max-age; see also `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` and `DJANGO_SECURE_HSTS_PRELOAD` (both `false`). |
 | `DJANGO_BEHIND_HTTPS_PROXY` | `false` | Trust `X-Forwarded-Proto: https` from a TLS-terminating proxy. |
@@ -461,13 +534,13 @@ and use your own OSRM server instead of the public demo.
 ## Tests and performance
 
 ```powershell
-pytest                                   # 463 tests, no network access needed (about 40 s)
-pytest --cov --cov-fail-under=95         # with coverage: about 99.7 % of lines
+pytest                                   # 495 tests, no network access needed (about 1 min)
+pytest --cov --cov-fail-under=95         # with coverage: about 99.4 % of lines
 pytest -m live                           # 2 smoke tests against the real OSRM / Census services
 ruff check . ; ruff format --check .     # lint and formatting
 ```
 
-* **No network and no private data needed.** On a fresh clone 454 tests run and 9 skip themselves
+* **No network and no private data needed.** On a fresh clone 485 tests run and 10 skip themselves
   because they need the git-ignored CSV (they pass when it is present). Every external service is
   mocked; the 2 `live` tests are excluded by default.
 * **What is covered:** the optimiser (exhaustive and reference-solver comparison, properties,
@@ -561,9 +634,12 @@ fuelplanner/
     planner.py          puts the steps together
     gazetteer.py, text.py, states.py, warmup.py, callcount.py
   importer.py           CSV cleaning and station placement
-  management/commands/  build_gazetteer, load_fuel_data, runserver (warms up first)
+  management/commands/  build_gazetteer, load_fuel_data, load_demo_data, runserver (warms up first)
   models.py             Station
 data/us_places.csv.gz   shipped place table (the CSV itself is git-ignored)
+data/demo/               synthetic demo stations (public demo only)
+scripts/                generator for the synthetic demo stations
+render.yaml             Render blueprint for the synthetic-data public demo
 docs/examples/          example responses (synthetic stations)
 postman/                Postman collection
 tests/                  test suite, fixtures (synthetic data, recorded OSRM routes)
@@ -600,6 +676,9 @@ tests/                  test suite, fixtures (synthetic data, recorded OSRM rout
   Information System (U.S. government data, public domain).
 * **Street-address geocoding:** U.S. Census Bureau Geocoder.
 * **Fuel prices:** the OPIS dataset supplied with the assessment, **not redistributed here**.
+* **Public demo data:** `data/demo/synthetic_stations.csv` is synthetic (fictional station
+  names, invented prices) and unrelated to the assessment dataset; the private CSV is never
+  deployed.
 * **Example files:** `docs/examples/` uses synthetic, clearly named stations
   ("EXAMPLE TRAVEL CENTER #n") with invented prices, produced by running this code on recorded
   routes. They show the format and the arithmetic, not real stations.

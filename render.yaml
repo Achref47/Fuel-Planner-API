@@ -1,0 +1,40 @@
+# Render Blueprint for a PUBLIC DEMO that runs on SYNTHETIC station data only.
+# The private assessment CSV is never uploaded or referenced here.
+services:
+  - type: web
+    name: fuel-planner-api
+    runtime: python
+    plan: free
+    # Python version comes from .python-version (3.13).
+    buildCommand: pip install -r requirements.txt
+    # Initialisation is idempotent and runs at every start, so a fresh (ephemeral) filesystem
+    # always gets its schema and demo stations. One worker: the cache and rate limiter are
+    # in-process. Threads handle concurrent requests.
+    startCommand: >-
+      python manage.py migrate --noinput &&
+      python manage.py load_demo_data &&
+      gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 60
+      --access-logfile -
+    healthCheckPath: /api/v1/health/
+    autoDeployTrigger: commit
+    envVars:
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: DJANGO_BEHIND_HTTPS_PROXY
+        value: "true"
+      - key: DJANGO_SECURE_SSL_REDIRECT
+        value: "true"
+      - key: DJANGO_SECURE_HSTS_SECONDS
+        value: "31536000"
+      - key: DATA_NOTICE
+        value: "PUBLIC DEMO: all fuel stations and prices are SYNTHETIC (fictional names, invented prices) and are not real fuel prices."
+      - key: HTTP_USER_AGENT
+        value: "fuel-planner-api-demo/1.0 (+https://github.com/Achref47/Fuel-Planner-API)"
+      - key: THROTTLE_RATE
+        value: "600/min"
+      - key: LOG_LEVEL
+        value: "INFO"
