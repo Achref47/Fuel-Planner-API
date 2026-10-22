@@ -31,8 +31,11 @@ problem with exact money arithmetic, all with **one routing request per new trip
 [Postman](#postman) · [How it works](#how-it-works) · [The optimiser](#the-optimiser) ·
 [Tests and performance](#tests-and-performance) · [Limitations](#known-limitations)
 
-> The project runs locally. A Render blueprint for a **public demo on synthetic data** is included
-> ([see below](#public-demo-on-render-synthetic-data)); no live URL exists until you deploy it.
+**Demo video (4½ min):** [watch on YouTube](https://www.youtube.com/watch?v=frWYPvEN9MQ)
+
+**Live demo:** <https://fuel-planner-api.onrender.com/api/v1/health/>. It runs on **synthetic
+data** ([details below](#public-demo-on-render-synthetic-data)); the free tier sleeps when idle, so
+the first request can take about a minute.
 
 ---
 
