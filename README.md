@@ -31,7 +31,14 @@ problem with exact money arithmetic, all with **one routing request per new trip
 [Postman](#postman) · [How it works](#how-it-works) · [The optimiser](#the-optimiser) ·
 [Tests and performance](#tests-and-performance) · [Limitations](#known-limitations)
 
-**Demo video (4½ min):** [watch on YouTube](https://www.youtube.com/watch?v=frWYPvEN9MQ)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=frWYPvEN9MQ">
+    <img src="https://img.youtube.com/vi/frWYPvEN9MQ/maxresdefault.jpg"
+         alt="Watch the 4½-minute demo video on YouTube" width="720">
+  </a>
+  <br>
+  <sub>▶ Click to watch the 4½-minute demo video on YouTube</sub>
+</p>
 
 **Live demo:** <https://fuel-planner-api.onrender.com/api/v1/health/>. It runs on **synthetic
 data** ([details below](#public-demo-on-render-synthetic-data)); the free tier sleeps when idle, so
