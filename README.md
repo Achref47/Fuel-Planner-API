@@ -425,7 +425,7 @@ Settings come from environment variables, optionally loaded from a git-ignored `
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DJANGO_DEBUG` | `false` | `true` for local development (also enables the browsable API). |
+| `DJANGO_DEBUG` | `false` | `true` for local development (allows the built-in development secret key). |
 | `DJANGO_SECRET_KEY` | – | **Required when `DJANGO_DEBUG` is false**; the app refuses to start without it. |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1,[::1],testserver` | Comma-separated host names. |
 | `FUEL_CSV_PATH` | `data/fuel-prices-for-be-assessment.csv` | Where the assessment CSV is. |

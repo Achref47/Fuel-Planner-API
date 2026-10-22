@@ -101,8 +101,9 @@ CACHES = {
 }
 
 REST_FRAMEWORK = {
-    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"]
-    + (["rest_framework.renderers.BrowsableAPIRenderer"] if DEBUG else []),
+    # JSON only. (DRF's browsable HTML renderer needs a template engine this project does not
+    # configure; a browser's Accept header includes */*, so it simply receives the JSON.)
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     # The API is public and stateless for this assessment: no sessions, no auth.
     "DEFAULT_AUTHENTICATION_CLASSES": [],

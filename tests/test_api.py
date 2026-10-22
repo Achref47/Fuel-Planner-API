@@ -553,3 +553,22 @@ def test_urls_work_with_and_without_the_trailing_slash(client, http):
         assert client.get(url).status_code in (200, 503), url  # a real answer, never a redirect
     assert client.get("/api/v1/fuel-route/extra").status_code == 404
     assert client.get("/api/v1/fuel-routes").status_code == 404
+
+
+BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8"
+
+
+def test_opening_an_endpoint_in_a_browser_returns_json_not_a_template_error(client, settings):
+    """Regression: with DEBUG on, DRF's HTML renderer crashed with TemplateDoesNotExist."""
+    settings.DEBUG = True
+    response = client.get("/api/v1/health/", HTTP_ACCEPT=BROWSER_ACCEPT)
+    assert response.status_code in (200, 503)
+    assert response["Content-Type"].startswith("application/json")
+    assert "status" in response.json()
+    assert client.get("/api/v1/fuel-route/", HTTP_ACCEPT=BROWSER_ACCEPT).status_code == 405
+
+
+def test_the_renderer_list_is_json_only_whatever_the_debug_flag():
+    from django.conf import settings as s
+
+    assert s.REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] == ["rest_framework.renderers.JSONRenderer"]
