@@ -1,0 +1,9 @@
+{
+  "error": {
+    "code": "location_not_found",
+    "message": "No place named 'Atlantis' was found in TX. Use 'City, ST', a 5-digit ZIP code, 'lat,lon' or a full street address.",
+    "details": {
+      "input": "Atlantis, TX"
+    }
+  }
+}

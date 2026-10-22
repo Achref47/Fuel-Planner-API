@@ -1,0 +1,136 @@
+{
+  "start": {
+    "input": "Chicago, IL",
+    "label": "Chicago, IL",
+    "lat": 41.83705,
+    "lon": -87.68494,
+    "resolved_by": "gazetteer_city",
+    "precision": "city"
+  },
+  "finish": {
+    "input": "Dallas, TX",
+    "label": "Dallas, TX",
+    "lat": 32.79333,
+    "lon": -96.76651,
+    "resolved_by": "gazetteer_city",
+    "precision": "city"
+  },
+  "route": {
+    "distance_miles": 961.5,
+    "duration_hours": 17.04,
+    "geometry_mode": "none",
+    "geometry_points": 0,
+    "geometry": null
+  },
+  "vehicle": {
+    "max_range_miles": 500.0,
+    "miles_per_gallon": 10.0,
+    "tank_gallons": 50.0,
+    "initial_fuel_gallons": 50.0
+  },
+  "fuel_stops": [
+    {
+      "sequence": 1,
+      "station": {
+        "opis_id": 900002,
+        "name": "EXAMPLE TRAVEL CENTER #2",
+        "address": "I-00, EXIT 0",
+        "city": "Marion",
+        "state": "IL",
+        "lat": 37.734631,
+        "lon": -88.944227,
+        "location_precision": "city",
+        "approximate_location": true
+      },
+      "price_per_gallon": 3.019,
+      "route_mile": 313.0,
+      "off_route_miles": 0.8,
+      "detour_miles": 1.6,
+      "distance_from_previous_miles": 313.8,
+      "fuel_on_arrival_gallons": 18.62,
+      "gallons_purchased": 30.19,
+      "fuel_on_departure_gallons": 48.81,
+      "cost": 91.14
+    },
+    {
+      "sequence": 2,
+      "station": {
+        "opis_id": 900006,
+        "name": "EXAMPLE TRAVEL CENTER #6",
+        "address": "I-00, EXIT 0",
+        "city": "Paris",
+        "state": "TX",
+        "lat": 33.47175,
+        "lon": -94.27865,
+        "location_precision": "city",
+        "approximate_location": true
+      },
+      "price_per_gallon": 2.849,
+      "route_mile": 800.0,
+      "off_route_miles": 0.3,
+      "detour_miles": 0.6,
+      "distance_from_previous_miles": 488.1,
+      "fuel_on_arrival_gallons": 0.0,
+      "gallons_purchased": 16.18,
+      "fuel_on_departure_gallons": 16.18,
+      "cost": 46.09
+    }
+  ],
+  "legs": [
+    {
+      "sequence": 1,
+      "from": "start",
+      "to": "stop 1",
+      "distance_miles": 313.8,
+      "fuel_used_gallons": 31.38
+    },
+    {
+      "sequence": 2,
+      "from": "stop 1",
+      "to": "stop 2",
+      "distance_miles": 488.1,
+      "fuel_used_gallons": 48.81
+    },
+    {
+      "sequence": 3,
+      "from": "stop 2",
+      "to": "finish",
+      "distance_miles": 161.8,
+      "fuel_used_gallons": 16.18
+    }
+  ],
+  "summary": {
+    "fuel_stops": 2,
+    "route_distance_miles": 961.5,
+    "driving_distance_miles": 963.7,
+    "detour_miles": 2.2,
+    "fuel_used_gallons": 96.37,
+    "initial_fuel_gallons": 50.0,
+    "fuel_purchased_gallons": 46.37,
+    "fuel_remaining_at_destination_gallons": 0.0,
+    "total_fuel_cost": 137.23,
+    "average_price_per_gallon": 2.96,
+    "currency": "USD"
+  },
+  "assumptions": [
+    "The vehicle starts with 50 gallons (100% of a 50-gallon tank); that fuel is not counted as a purchase, so trips within the starting range cost $0.00.",
+    "Fuel is bought only as needed to minimise cost; the vehicle may reach a stop or the destination with an empty tank, and never exceeds the 500-mile range between refuelling points.",
+    "Each station's price is the lowest price listed for it in the supplied dataset, treated as the current USD price per gallon.",
+    "Station coordinates are not in the dataset: they are the centroid of the station's city (location_precision \"city\"), so a station can be a few miles from its marker.",
+    "Only stations within 5 miles (straight line) of the route are considered. A detour is driven out and back, and the fuel it uses is paid for.",
+    "The start location was resolved to the city of 'Chicago, IL', not to an exact address.",
+    "The finish location was resolved to the city of 'Dallas, TX', not to an exact address."
+  ],
+  "meta": {
+    "routing_provider": "osrm",
+    "routing_cache": "miss",
+    "external_calls": {
+      "routing": 0,
+      "geocoding": 0
+    },
+    "candidate_stations": 7,
+    "max_detour_miles": 5.0,
+    "elapsed_ms": 31,
+    "attribution": "Routing by OSRM (project-osrm.org). Map data \u00a9 OpenStreetMap contributors (ODbL). Place coordinates: U.S. Census Bureau Gazetteer and USGS GNIS (public domain). Fuel prices: supplied OPIS dataset."
+  }
+}

@@ -1,0 +1,985 @@
+{
+  "info": {
+    "name": "Fuel Route Planner API",
+    "description": "Route + cost-optimal fuel stops for a 500-mile-range, 10 mpg vehicle in the contiguous US.\n\nRun **Health check** first (it warms the server). All requests assert their results in the Tests tab; use the Collection Runner to run everything. Routing: OSRM, map data (c) OpenStreetMap contributors (ODbL).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "last_route_cache",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Health check (run first - warms the caches)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health",
+                ""
+              ]
+            },
+            "description": "Returns the number of stations and places loaded. 503 means the dataset has not been imported."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 and ok\", () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql(\"ok\"); });",
+                  "pm.test(\"stations loaded\", () => pm.expect(pm.response.json().stations_loaded).to.be.above(1000));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Core trips",
+      "item": [
+        {
+          "name": "Short trip: Dallas -> Houston (no stops, $0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "Within one tank's range the trip needs no stop. The starting fuel is not counted as a purchase.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Houston, TX\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"no fuel stops needed\", () => pm.expect(body.fuel_stops.length).to.eql(0));",
+                  "pm.test(\"costs nothing (starts with a full tank)\", () => pm.expect(body.summary.total_fuel_cost).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Medium trip: Chicago -> Dallas (2 stops)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "A journey longer than one tank: every stop shows price, route mile, gallons bought and cost.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"needs stops\", () => pm.expect(body.summary.fuel_stops).to.be.at.least(2));",
+                  "pm.test(\"legs never exceed the 500-mile range\", () => body.legs.forEach(l => pm.expect(l.distance_miles).to.be.at.most(500.05)));",
+                  "pm.test(\"total cost is the sum of the stop costs\", () => { const sum = body.fuel_stops.reduce((a, s) => a + s.cost, 0); pm.expect(sum).to.be.closeTo(body.summary.total_fuel_cost, 0.005); });",
+                  "pm.test(\"fuel balances\", () => { const s = body.summary; pm.expect(s.initial_fuel_gallons + s.fuel_purchased_gallons - s.fuel_used_gallons - s.fuel_remaining_at_destination_gallons).to.be.closeTo(0, 0.05); });",
+                  "pm.test(\"attribution present\", () => pm.expect(body.meta.attribution).to.include(\"OpenStreetMap\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Long trip: New York -> Los Angeles (many stops) + map",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "Open the **Visualize** tab to see the route and the stops on a map. Stops are placed at the centroid of the station's city, so markers are approximate.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"several stops\", () => pm.expect(body.summary.fuel_stops).to.be.above(4));",
+                  "pm.test(\"legs never exceed the 500-mile range\", () => body.legs.forEach(l => pm.expect(l.distance_miles).to.be.at.most(500.05)));",
+                  "pm.test(\"total cost is the sum of the stop costs\", () => { const sum = body.fuel_stops.reduce((a, s) => a + s.cost, 0); pm.expect(sum).to.be.closeTo(body.summary.total_fuel_cost, 0.005); });",
+                  "pm.test(\"fuel balances\", () => { const s = body.summary; pm.expect(s.initial_fuel_gallons + s.fuel_purchased_gallons - s.fuel_used_gallons - s.fuel_remaining_at_destination_gallons).to.be.closeTo(0, 0.05); });",
+                  "pm.test(\"attribution present\", () => pm.expect(body.meta.attribution).to.include(\"OpenStreetMap\"));",
+                  "pm.test(\"geometry is a LineString in [lon, lat]\", () => { pm.expect(body.route.geometry.type).to.eql(\"LineString\"); pm.expect(body.route.geometry.coordinates[0][0]).to.be.below(-70); });",
+                  "pm.collectionVariables.set(\"last_route_cache\", body.meta.routing_cache);",
+                  "const template = `<html><head><link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\"/>",
+                  "<style>html,body,#map{height:100%;margin:0}</style></head><body><div id=\"map\"></div>",
+                  "<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>",
+                  "<script>pm.getData(function(err, d){",
+                  "  const map = L.map('map');",
+                  "  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);",
+                  "  const line = L.geoJSON(d.route.geometry,{style:{color:'#1565c0',weight:4}}).addTo(map);",
+                  "  d.fuel_stops.forEach(s => L.marker([s.station.lat,s.station.lon]).addTo(map).bindPopup('#'+s.sequence+' '+s.station.name+'<br>'+s.station.city+', '+s.station.state+'<br>$'+s.price_per_gallon+'/gal<br>'+s.gallons_purchased+' gal = $'+s.cost+'<br><i>approximate location</i>'));",
+                  "  L.circleMarker([d.start.lat,d.start.lon],{color:'green'}).addTo(map).bindPopup('Start: '+d.start.label);",
+                  "  L.circleMarker([d.finish.lat,d.finish.lon],{color:'red'}).addTo(map).bindPopup('Finish: '+d.finish.label);",
+                  "  map.fitBounds(line.getBounds());",
+                  "});</script></body></html>`;",
+                  "pm.visualizer.set(template, body);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same long trip again (cache hit, no external calls)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "Run right after the previous request. Identical journeys never call the router again.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"served from cache\", () => pm.expect(body.meta.routing_cache).to.eql(\"hit\"));",
+                  "pm.test(\"no external calls\", () => pm.expect(body.meta.external_calls).to.eql({routing: 0, geocoding: 0}));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Ways to give a location",
+      "item": [
+        {
+          "name": "ZIP codes: 10001 -> 90001",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"10001\",\n  \"finish\": \"90001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"ZIP resolved offline\", () => pm.expect(body.start.resolved_by).to.eql(\"gazetteer_zip\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Coordinates: Chicago -> St. Louis",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": {\n    \"lat\": 41.8781,\n    \"lon\": -87.6298\n  },\n  \"finish\": \"38.6270,-90.1994\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"exact precision\", () => pm.expect(body.start.precision).to.eql(\"exact\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Street address (uses the Census geocoder once)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"233 S Wacker Dr, Chicago, IL 60606\",\n  \"finish\": \"Milwaukee, WI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"address geocoded\", () => pm.expect(body.start.resolved_by).to.eql(\"census_geocoder\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Options",
+      "item": [
+        {
+          "name": "Wider detour (25 miles) on the long trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "Considers stations up to 25 miles off the route; the cost is never higher than with the 5-mile default.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"New York, NY\",\n  \"finish\": \"Los Angeles, CA\",\n  \"options\": {\n    \"max_detour_miles\": 25\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"more candidates\", () => pm.expect(body.meta.candidate_stations).to.be.above(200));",
+                  "pm.test(\"legs never exceed the 500-mile range\", () => body.legs.forEach(l => pm.expect(l.distance_miles).to.be.at.most(500.05)));",
+                  "pm.test(\"total cost is the sum of the stop costs\", () => { const sum = body.fuel_stops.reduce((a, s) => a + s.cost, 0); pm.expect(sum).to.be.closeTo(body.summary.total_fuel_cost, 0.005); });",
+                  "pm.test(\"fuel balances\", () => { const s = body.summary; pm.expect(s.initial_fuel_gallons + s.fuel_purchased_gallons - s.fuel_used_gallons - s.fuel_remaining_at_destination_gallons).to.be.closeTo(0, 0.05); });",
+                  "pm.test(\"attribution present\", () => pm.expect(body.meta.attribution).to.include(\"OpenStreetMap\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start with a half-empty tank",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\",\n  \"options\": {\n    \"initial_fuel_fraction\": 0.5\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"25 gallons on board\", () => pm.expect(body.vehicle.initial_fuel_gallons).to.eql(25));",
+                  "pm.test(\"legs never exceed the 500-mile range\", () => body.legs.forEach(l => pm.expect(l.distance_miles).to.be.at.most(500.05)));",
+                  "pm.test(\"total cost is the sum of the stop costs\", () => { const sum = body.fuel_stops.reduce((a, s) => a + s.cost, 0); pm.expect(sum).to.be.closeTo(body.summary.total_fuel_cost, 0.005); });",
+                  "pm.test(\"fuel balances\", () => { const s = body.summary; pm.expect(s.initial_fuel_gallons + s.fuel_purchased_gallons - s.fuel_used_gallons - s.fuel_remaining_at_destination_gallons).to.be.closeTo(0, 0.05); });",
+                  "pm.test(\"attribution present\", () => pm.expect(body.meta.attribution).to.include(\"OpenStreetMap\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Lightweight response (no geometry)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\",\n  \"options\": {\n    \"geometry\": \"none\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"no geometry\", () => pm.expect(body.route.geometry).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GeoJSON output (paste into geojson.io)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/?format=geojson",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "geojson"
+                }
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Dallas, TX\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"FeatureCollection with route, start, finish and stops\", () => { pm.expect(body.type).to.eql(\"FeatureCollection\"); const kinds = body.features.map(f => f.properties.kind); pm.expect(kinds).to.include.members([\"route\", \"start\", \"finish\", \"fuel_stop\"]); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Errors (all use the same format)",
+      "item": [
+        {
+          "name": "Infeasible: Seattle -> San Diego (data gap)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "The data has almost no stations on this corridor south of Oregon, so a 500-mile range cannot cross it. The error says where.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Seattle, WA\",\n  \"finish\": \"San Diego, CA\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is no_feasible_fuel_plan\", () => pm.expect(body.error.code).to.eql(\"no_feasible_fuel_plan\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });",
+                  "pm.test(\"gap is described\", () => { pm.expect(body.error.details.shortfall_miles).to.be.above(0); pm.expect(body.error.details.gap_start).to.have.property(\"lat\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation: missing finish, unknown option",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"options\": {\n    \"speed\": 70\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is validation_error\", () => pm.expect(body.error.code).to.eql(\"validation_error\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });",
+                  "pm.test(\"fields named\", () => { pm.expect(body.error.details).to.have.property(\"finish\"); pm.expect(body.error.details.options).to.have.property(\"speed\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation: detour out of range",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"Houston, TX\",\n  \"options\": {\n    \"max_detour_miles\": 99\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is validation_error\", () => pm.expect(body.error.code).to.eql(\"validation_error\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same start and finish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Dallas, TX\",\n  \"finish\": \"dallas, tx\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is same_location\", () => pm.expect(body.error.code).to.eql(\"same_location\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown city",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Atlantis, TX\",\n  \"finish\": \"Houston, TX\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is location_not_found\", () => pm.expect(body.error.code).to.eql(\"location_not_found\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Outside the USA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": {\n    \"lat\": 48.8566,\n    \"lon\": 2.3522\n  },\n  \"finish\": \"Dallas, TX\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 422\", () => pm.response.to.have.status(422));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is location_outside_usa\", () => pm.expect(body.error.code).to.eql(\"location_outside_usa\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong method (GET)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fuel-route/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fuel-route",
+                ""
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 405\", () => pm.response.to.have.status(405));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error code is method_not_allowed\", () => pm.expect(body.error.code).to.eql(\"method_not_allowed\"));",
+                  "pm.test(\"error has message and details\", () => { pm.expect(body.error.message).to.be.a(\"string\"); pm.expect(body.error).to.have.property(\"details\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

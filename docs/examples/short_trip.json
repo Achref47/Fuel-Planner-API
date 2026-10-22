@@ -1,0 +1,75 @@
+{
+  "start": {
+    "input": "Dallas, TX",
+    "label": "Dallas, TX",
+    "lat": 32.79333,
+    "lon": -96.76651,
+    "resolved_by": "gazetteer_city",
+    "precision": "city"
+  },
+  "finish": {
+    "input": "Houston, TX",
+    "label": "Houston, TX",
+    "lat": 29.78574,
+    "lon": -95.38881,
+    "resolved_by": "gazetteer_city",
+    "precision": "city"
+  },
+  "route": {
+    "distance_miles": 238.3,
+    "duration_hours": 4.25,
+    "geometry_mode": "none",
+    "geometry_points": 0,
+    "geometry": null
+  },
+  "vehicle": {
+    "max_range_miles": 500.0,
+    "miles_per_gallon": 10.0,
+    "tank_gallons": 50.0,
+    "initial_fuel_gallons": 50.0
+  },
+  "fuel_stops": [],
+  "legs": [
+    {
+      "sequence": 1,
+      "from": "start",
+      "to": "finish",
+      "distance_miles": 238.3,
+      "fuel_used_gallons": 23.83
+    }
+  ],
+  "summary": {
+    "fuel_stops": 0,
+    "route_distance_miles": 238.3,
+    "driving_distance_miles": 238.3,
+    "detour_miles": 0.0,
+    "fuel_used_gallons": 23.83,
+    "initial_fuel_gallons": 50.0,
+    "fuel_purchased_gallons": 0.0,
+    "fuel_remaining_at_destination_gallons": 26.17,
+    "total_fuel_cost": 0.0,
+    "average_price_per_gallon": null,
+    "currency": "USD"
+  },
+  "assumptions": [
+    "The vehicle starts with 50 gallons (100% of a 50-gallon tank); that fuel is not counted as a purchase, so trips within the starting range cost $0.00.",
+    "Fuel is bought only as needed to minimise cost; the vehicle may reach a stop or the destination with an empty tank, and never exceeds the 500-mile range between refuelling points.",
+    "Each station's price is the lowest price listed for it in the supplied dataset, treated as the current USD price per gallon.",
+    "Station coordinates are not in the dataset: they are the centroid of the station's city (location_precision \"city\"), so a station can be a few miles from its marker.",
+    "Only stations within 5 miles (straight line) of the route are considered. A detour is driven out and back, and the fuel it uses is paid for.",
+    "The start location was resolved to the city of 'Dallas, TX', not to an exact address.",
+    "The finish location was resolved to the city of 'Houston, TX', not to an exact address."
+  ],
+  "meta": {
+    "routing_provider": "osrm",
+    "routing_cache": "miss",
+    "external_calls": {
+      "routing": 0,
+      "geocoding": 0
+    },
+    "candidate_stations": 0,
+    "max_detour_miles": 5.0,
+    "elapsed_ms": 31,
+    "attribution": "Routing by OSRM (project-osrm.org). Map data \u00a9 OpenStreetMap contributors (ODbL). Place coordinates: U.S. Census Bureau Gazetteer and USGS GNIS (public domain). Fuel prices: supplied OPIS dataset."
+  }
+}

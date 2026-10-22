@@ -541,3 +541,15 @@ def test_coast_to_coast_sized_route_is_fast_and_cached_repeat_is_faster(client, 
     assert sum(s["cost"] for s in data["fuel_stops"]) == pytest.approx(
         data["summary"]["total_fuel_cost"], abs=0.005
     )
+
+
+def test_urls_work_with_and_without_the_trailing_slash(client, http):
+    mock_route(http, DALLAS, HOUSTON, distance=240.0)
+    body = {"start": "Dallas, TX", "finish": "Houston, TX"}
+    for url in ("/api/v1/fuel-route/", "/api/v1/fuel-route"):
+        response = client.post(url, body, format="json")
+        assert response.status_code == 200, url
+    for url in ("/api/v1/health/", "/api/v1/health"):
+        assert client.get(url).status_code in (200, 503), url  # a real answer, never a redirect
+    assert client.get("/api/v1/fuel-route/extra").status_code == 404
+    assert client.get("/api/v1/fuel-routes").status_code == 404

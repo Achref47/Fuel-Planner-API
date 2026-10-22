@@ -1,0 +1,27 @@
+{
+  "error": {
+    "code": "no_feasible_fuel_plan",
+    "message": "No feasible fuel plan: the vehicle cannot get past route mile 258. The closest next fuel option is the destination, 993 miles away, but it can drive at most 500 miles from there (500-mile range).",
+    "details": {
+      "last_reachable_route_mile": 258.0,
+      "next_option_route_mile": 1250.7,
+      "next_option_is_destination": true,
+      "distance_to_next_option_miles": 993.1,
+      "shortfall_miles": 493.1,
+      "max_range_miles": 500.0,
+      "route_length_miles": 1250.7,
+      "candidate_stations": 3,
+      "gap_start": {
+        "route_mile": 258.0,
+        "lat": 44.40246,
+        "lon": -123.06147
+      },
+      "gap_end": {
+        "route_mile": 1250.7,
+        "lat": 32.8304,
+        "lon": -117.12086
+      },
+      "max_detour_miles": 5.0
+    }
+  }
+}

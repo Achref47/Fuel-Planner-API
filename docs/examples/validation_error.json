@@ -1,0 +1,16 @@
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The request is invalid.",
+    "details": {
+      "finish": [
+        "This field is required."
+      ],
+      "options": {
+        "speed": [
+          "Unknown field."
+        ]
+      }
+    }
+  }
+}

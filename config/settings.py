@@ -57,6 +57,9 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+APPEND_SLASH = (
+    False  # the API routes accept both /x and /x/ themselves (a redirect would drop a POST body)
+)
 WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
