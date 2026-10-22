@@ -256,10 +256,11 @@ def _explain_infeasible(
 
     shortfall, from_mile, to_mile, distance, to_destination = best  # type: ignore[misc]
     target = "the destination" if to_destination else f"the next station (route mile {to_mile:.0f})"
+    drivable = distance - shortfall  # what the vehicle can cover from that point
     message = (
-        f"No feasible fuel plan: after route mile {from_mile:.0f} the nearest reachable option "
-        f"is {target}, {distance:.0f} miles away - more than the vehicle can drive on a tank "
-        f"({max_range:.0f}-mile range)."
+        f"No feasible fuel plan: the vehicle cannot get past route mile {from_mile:.0f}. "
+        f"The closest next fuel option is {target}, {distance:.0f} miles away, but it can drive "
+        f"at most {drivable:.0f} miles from there ({max_range:.0f}-mile range)."
     )
     return NoFeasiblePlanError(
         message,

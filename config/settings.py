@@ -88,6 +88,10 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [],
     "UNAUTHENTICATED_USER": None,
+    # Responses are always JSON; `?format=geojson` is handled by the view, not content negotiation.
+    "URL_FORMAT_OVERRIDE": None,
+    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.AnonRateThrottle"],
+    "DEFAULT_THROTTLE_RATES": {"anon": os.environ.get("THROTTLE_RATE", "120/min")},
     "EXCEPTION_HANDLER": "fuelplanner.api.exceptions.api_exception_handler",
 }
 
@@ -115,7 +119,10 @@ FUEL_PLANNER = {
     "MPG": 10.0,
     # Planning defaults (overridable per request within the validated bounds).
     "DEFAULT_MAX_DETOUR_MILES": 5.0,
+    "MIN_ALLOWED_DETOUR_MILES": 0.5,  # one resample step: smaller corridors are not reliable
     "MAX_ALLOWED_DETOUR_MILES": 25.0,
+    # Tolerance used when simplifying the route geometry returned to clients.
+    "GEOMETRY_TOLERANCE_MILES": 0.05,
     # Route resampling step used for station matching.
     "RESAMPLE_STEP_MILES": 0.5,
     # Dataset locations. The real CSV is supplied by the assessor and is not

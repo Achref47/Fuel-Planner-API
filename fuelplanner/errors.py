@@ -82,3 +82,8 @@ class GeocodingProviderError(PlannerError):
 
     code = "geocoding_provider_error"
     http_status = 502
+
+
+class SameLocationError(PlannerError):
+    code = "same_location"
+    http_status = 400

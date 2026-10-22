@@ -17,6 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 
 from ..errors import GeocodingProviderError
+from . import callcount
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ def geocode_address(address: str, *, session: requests.Session | None = None):
         return None if cached == "no-match" else GeocodeResult(**cached)
 
     http = session or requests
+    callcount.record("geocoding")
     short = key[-8:]  # identify the lookup in logs without recording the address itself
     try:
         response = http.get(

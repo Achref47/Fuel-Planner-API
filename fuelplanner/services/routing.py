@@ -32,6 +32,7 @@ from ..errors import (
     RoutingProviderTimeoutError,
     RoutingProviderUnavailableError,
 )
+from . import callcount
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +293,7 @@ def get_route(start: LatLon, end: LatLon) -> RouteLookup:
         cached = cache.get(key)
         if cached is not None:
             return RouteLookup(cached, "hit")
+        callcount.record("routing")
         route = provider.route(start, end)
         cache.set(key, route, settings.FUEL_PLANNER["ROUTE_CACHE_SECONDS"])
         logger.info("route cache miss %s (stored)", key[-8:])
