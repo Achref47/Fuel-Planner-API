@@ -89,15 +89,22 @@ Settings come from environment variables, optionally loaded from a local `.env` 
 | `OSRM_TIMEOUT_SECONDS` | `15` | Timeout for the routing request. |
 | `OSRM_MIN_INTERVAL_SECONDS` | `1.0` | Minimum gap between outgoing routing requests (public server limit). |
 | `HTTP_USER_AGENT` | `spotter-fuel-route-assessment/1.0 …` | Identifies you to OSRM and the Census geocoder (their policies require it). Put your contact address in it. |
+| `CENSUS_GEOCODER_URL` | Census `onelineaddress` endpoint | Street-address geocoder (only used for addresses). |
+| `CENSUS_TIMEOUT_SECONDS` | `10` | Timeout for an address look-up. |
 | `ROUTE_CACHE_SECONDS` / `GEOCODE_CACHE_SECONDS` | 1 day / 30 days | Cache lifetimes. |
 | `CACHE_MAX_ENTRIES` | `200` | Cap on the in-process cache (a coast-to-coast route is about 0.5 MB). |
 | `THROTTLE_RATE` | `120/min` | API rate limit per client IP. |
 | `LOG_LEVEL` | `INFO` | Logging level of the `fuelplanner` logger. |
 | `DATABASE_FILE` | `db.sqlite3` | SQLite file name. |
+| `DJANGO_SECURE_SSL_REDIRECT` | `false` | Redirect HTTP to HTTPS (deployment behind TLS). |
+| `DJANGO_SECURE_HSTS_SECONDS` | `0` | HSTS max-age; with `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` / `DJANGO_SECURE_HSTS_PRELOAD` (both `false`). |
+| `DJANGO_BEHIND_HTTPS_PROXY` | `false` | Trust `X-Forwarded-Proto: https` from a TLS-terminating proxy. |
 
-Production notes: set `DJANGO_DEBUG=false`, a real `DJANGO_SECRET_KEY` and `DJANGO_ALLOWED_HOSTS`;
-run behind a real WSGI server (`config.wsgi.application`); use a shared cache (Redis/Memcached)
-if you run several processes; and use your own OSRM server instead of the public demo, which is
+Production notes: set `DJANGO_DEBUG=false`, a real `DJANGO_SECRET_KEY` and `DJANGO_ALLOWED_HOSTS`,
+and the HTTPS settings above (with all of them on, `python manage.py check --deploy` reports no
+issues; the CSRF check is deliberately silenced because the API uses no cookies or sessions); run
+behind a real WSGI server (`config.wsgi.application`); use a shared cache (Redis/Memcached) if you
+run several processes; and use your own OSRM server instead of the public demo, which is
 best-effort, limited to one request per second, and not meant for production traffic.
 
 ---
@@ -224,7 +231,7 @@ stops) instead of the JSON below.
   "finish": { "...": "same shape" },
   "route": {
     "distance_miles": 961.5, "duration_hours": 17.04,
-    "geometry_mode": "simplified", "geometry_points": 741,
+    "geometry_mode": "simplified", "geometry_points": 452,
     "geometry": { "type": "LineString", "coordinates": [[-87.68494, 41.83705], "..."] }   // [lon, lat]
   },
   "vehicle": { "max_range_miles": 500.0, "miles_per_gallon": 10.0, "tank_gallons": 50.0,
@@ -260,7 +267,9 @@ stops) instead of the JSON below.
 
 Units and rounding (display only; arithmetic is exact): miles 1 decimal, gallons 2, price per
 gallon 3, money 2 (half-up), coordinates 6 (5 along the route). Each stop's `cost` is gallons ×
-the full-precision price rounded to the cent, and `total_fuel_cost` is the sum of those lines.
+the price exactly as supplied (stored with all of its up to 8 decimals) rounded to the cent, and
+`total_fuel_cost` is the sum of those lines, so `price_per_gallon × gallons_purchased` from the
+displayed (rounded) values can differ from `cost` by a cent.
 Fuel balances: `initial + purchased − used = remaining` (to display rounding).
 
 **Using the response on a map.** `route.geometry` is a standard GeoJSON `LineString` in
@@ -277,6 +286,7 @@ Fuel balances: `initial + purchased − used = remaining` (to display rounding).
 |---|---|---|
 | 400 | `validation_error` | Missing/invalid field, unknown key, bad option (`details` lists them). |
 | 400 | `invalid_json` | Body is not valid JSON. |
+| 400 | `bad_request` | Rejected before reaching the API (e.g. a `Host` not in `DJANGO_ALLOWED_HOSTS`). |
 | 400 | `same_location` | Start and finish are the same place. |
 | 422 | `location_not_found` | The text matches no city/ZIP/address. |
 | 422 | `location_outside_usa` | Outside the contiguous United States. |
@@ -394,7 +404,7 @@ given to it; the model's approximations are listed below.
 ## Tests, quality and performance
 
 ```powershell
-pytest                                   # 454 tests, no network access needed (about 40 s)
+pytest                                   # 463 tests, no network access needed (about 40 s)
 pytest --cov --cov-fail-under=95         # with coverage: 99.7 % of lines
 pytest -m live                           # 2 smoke tests against the real OSRM / Census services
 ruff check . ; ruff format --check .     # lint and formatting
@@ -419,8 +429,8 @@ Measured on a laptop (Python 3.13, your CSV):
 |---|---|
 | Server start-up warm-up (place table + stations) | ≈ 0.8 s, once |
 | Planning a coast-to-coast trip, router mocked | ≈ 27 ms |
-| Repeat of a cached trip, end to end | ≈ 25–55 ms |
-| New trip, live OSRM (NYC → LA) | ≈ 1.0–1.2 s (mostly OSRM) |
+| Repeat of a cached trip, end to end | ≈ 10–45 ms |
+| New trip, live OSRM (NYC → LA) | ≈ 0.9–1.2 s (mostly OSRM) |
 | Optimiser: 600 candidates, 6,000 miles | ≈ 75 ms |
 | Response size, NYC → LA | 49 KB (75 KB with `geometry: full`, 6 KB with `none`) |
 
@@ -483,6 +493,7 @@ road data changes.
 | Health says `unavailable` / `fuel_data_unavailable` | Run `python manage.py migrate` then `python manage.py load_fuel_data`. |
 | `routing_provider_unavailable` / 429 | The public OSRM is busy or rate limiting; wait and retry (repeat requests are cached). |
 | `no_feasible_fuel_plan` | Genuine data gap on that route; try a larger `max_detour_miles` or check `details.gap_start`. |
+| `You have 1 unapplied migration(s)` after updating | `python manage.py migrate`, then `python manage.py load_fuel_data` again (prices are now stored with all 8 decimals). |
 | Activate.ps1 is blocked | `Set-ExecutionPolicy -Scope Process Bypass` in that window. |
 | `No matching distribution` for Django 6.1 | You are on Python < 3.12; install Python 3.13. |
 

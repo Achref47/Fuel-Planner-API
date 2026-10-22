@@ -71,6 +71,13 @@ def api_exception_handler(exc, context):
     return response
 
 
+def json_400(request, exception=None):
+    """Django-level bad requests (e.g. a Host header not in ALLOWED_HOSTS)."""
+    return JsonResponse(
+        error_body("bad_request", "The request could not be processed."), status=400
+    )
+
+
 def json_404(request, exception=None):
     return JsonResponse(error_body("not_found", "No such endpoint."), status=404)
 

@@ -54,7 +54,20 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# HTTPS hardening for deployments (off by default because local development is plain HTTP).
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", False)
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False)
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
+if env_bool("DJANGO_BEHIND_HTTPS_PROXY", False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# CSRF protection guards cookie-authenticated browser sessions. This API sets no cookies and has
+# no authentication (DRF views are CSRF-exempt without SessionAuthentication), so the
+# middleware would protect nothing; the deploy check for it is silenced deliberately.
+SILENCED_SYSTEM_CHECKS = ["security.W003"]
 
 ROOT_URLCONF = "config.urls"
 APPEND_SLASH = (

@@ -8,7 +8,13 @@ from django.test import RequestFactory
 from rest_framework import exceptions as drf
 from rest_framework.test import APIClient
 
-from fuelplanner.api.exceptions import api_exception_handler, error_body, json_404, json_500
+from fuelplanner.api.exceptions import (
+    api_exception_handler,
+    error_body,
+    json_400,
+    json_404,
+    json_500,
+)
 from fuelplanner.errors import (
     FuelDataUnavailableError,
     PlannerError,
@@ -121,3 +127,29 @@ def test_health_survives_a_missing_place_table(settings, tmp_path):
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok" and body["gazetteer_places"] == 0 and body["stations_loaded"] == 1
+
+
+@pytest.mark.parametrize("debug", [False, True])
+def test_unknown_urls_are_json_404s_even_in_debug_mode(settings, debug):
+    """Regression: with DEBUG on, Django rendered its HTML 404 page instead of the JSON format."""
+    settings.DEBUG = debug
+    client = APIClient()
+    for url in ("/api/v1/nope", "/", "/totally/elsewhere/", "/api/v1/fuel-route/extra"):
+        response = client.get(url)
+        assert response.status_code == 404, url
+        assert response["Content-Type"] == "application/json", url
+        assert json.loads(response.content)["error"]["code"] == "not_found"
+
+
+def test_a_disallowed_host_gets_a_json_400_without_details():
+    """Regression: Django's default HTML 'Bad Request (400)' page broke the error format."""
+    response = APIClient().get("/api/v1/health/", HTTP_HOST="evil.example.com")
+    assert response.status_code == 400
+    body = json.loads(response.content)
+    assert body == error_body("bad_request", "The request could not be processed.")
+
+
+def test_django_level_400_handler_directly():
+    response = json_400(RequestFactory().get("/"))
+    assert response.status_code == 400
+    assert json.loads(response.content)["error"]["code"] == "bad_request"

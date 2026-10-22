@@ -147,3 +147,30 @@ def test_real_dataset_is_located_with_high_coverage():
     assert report.matched_stations / report.us_stations >= 0.99
     assert all(24 < s.latitude < 50 or s.state in {"AK", "HI"} for s in stations)
     assert all(s.price > 0 for s in stations)
+
+
+@pytest.mark.django_db
+def test_imported_prices_keep_all_their_decimals_down_to_the_billed_cent(tmp_path):
+    """Regression: prices were stored to 5 decimals, which can move a bill by a cent.
+
+    3.41 gal at $3.00733333 = $10.2550... -> $10.26, but at $3.00733 it is $10.2549... -> $10.25.
+    """
+    from decimal import Decimal
+
+    from fuelplanner.services.accounting import build_ledger
+    from fuelplanner.services.optimizer import OptimalPlan, PlannedStop
+    from fuelplanner.services.stations import Candidate, load_station_index
+
+    csv_path = tmp_path / "prices.csv"
+    csv_path.write_text(
+        "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
+        "1,EIGHT DECIMALS,I-35,Dallas,TX,300,3.00733333\n",
+        encoding="utf-8",
+    )
+    run_import(tmp_path, csv=csv_path)
+    station = load_station_index(refresh=True).stations[0]
+    assert station.price == Decimal("3.00733333")
+
+    plan = OptimalPlan((PlannedStop(0, 100.0, 400.0, 34.1),), 434.1, 0.0, 500.0)
+    ledger = build_ledger(plan, [Candidate(station, 100.0, 0.0)], route_length=534.1)
+    assert ledger.stops[0].cost == Decimal("10.26")

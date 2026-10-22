@@ -23,7 +23,9 @@ class Station(models.Model):
     address = models.CharField(max_length=200)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=2, db_index=True)
-    price = models.DecimalField(max_digits=8, decimal_places=5, help_text="USD per gallon")
+    # 8 decimal places: the supplied prices carry up to 8 (e.g. 3.00733333), and costs are
+    # computed from the price exactly as supplied.
+    price = models.DecimalField(max_digits=12, decimal_places=8, help_text="USD per gallon")
     latitude = models.FloatField()
     longitude = models.FloatField()
     location_precision = models.CharField(

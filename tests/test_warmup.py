@@ -101,4 +101,4 @@ def test_the_loader_raises_a_planner_error_for_database_failures():
 
 def test_prices_are_loaded_as_exact_decimals():
     Station.objects.bulk_create([station_object(1, 32.0, -97.0, "3.00733333")])
-    assert load_station_index().stations[0].price == Decimal("3.00733")  # stored to 5 places
+    assert load_station_index().stations[0].price == Decimal("3.00733333")  # all 8 places kept

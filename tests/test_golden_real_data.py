@@ -36,6 +36,18 @@ def warm_up_gazetteer():
     get_gazetteer().nearest_place_miles(39.0, -98.0)
 
 
+def stop_fingerprint(stops) -> str:
+    """Identify the chosen stations without writing dataset identifiers into the repository.
+
+    The CSV is not redistributed, so the expected OPIS ids and cities are pinned as a short
+    SHA-256 digest of ``id|city|state`` for each stop, in order.
+    """
+    items = [
+        f"{s['station']['opis_id']}|{s['station']['city']}|{s['station']['state']}" for s in stops
+    ]
+    return hashlib.sha256(";".join(items).encode()).hexdigest()[:24]
+
+
 def dataset_is_the_recorded_one() -> bool:
     return hashlib.sha256(CSV.read_bytes()).hexdigest() == RECORDED_AGAINST_SHA256
 
@@ -83,11 +95,8 @@ def test_chicago_to_dallas(client, real_world):
     assert data["summary"]["fuel_stops"] >= 2  # 961 miles cannot be done on one tank
     if dataset_is_the_recorded_one():
         stops = data["fuel_stops"]
-        assert [s["station"]["opis_id"] for s in stops] == [69861, 68256]
-        assert [f"{s['station']['city']}, {s['station']['state']}" for s in stops] == [
-            "Marion, IL",
-            "Hooks, TX",
-        ]
+        assert stop_fingerprint(stops) == "f204d9df7ede9b4e0c937d03"  # the exact two stations
+        assert [s["station"]["state"] for s in stops] == ["IL", "TX"]
         assert [s["gallons_purchased"] for s in stops] == [30.24, 16.13]
         assert data["summary"]["total_fuel_cost"] == pytest.approx(134.01, abs=0.011)
 
@@ -101,9 +110,7 @@ def test_new_york_to_los_angeles(client, real_world):
     assert max(leg["distance_miles"] for leg in data["legs"]) <= 500
     if dataset_is_the_recorded_one():
         stops = data["fuel_stops"]
-        assert [s["station"]["opis_id"] for s in stops] == [
-            72782, 72501, 69840, 65287, 69085, 73101, 71712, 72965,
-        ]  # fmt: skip
+        assert stop_fingerprint(stops) == "a2842ea3db21b6e1cc3dfe21"  # the exact eight stations
         assert [s["station"]["state"] for s in stops] == [
             "OH", "IL", "NE", "NE", "NE", "CO", "UT", "NV",
         ]  # fmt: skip

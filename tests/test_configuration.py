@@ -138,3 +138,40 @@ def test_station_string_representation():
 
     station = Station(name="PILOT #1", city="Tomah", state="WI", price=Decimal("3.299"))
     assert str(station) == "PILOT #1 (Tomah, WI) $3.299"
+
+
+DEPLOY_SECRET = "deploy-check-secret-" + "x" * 50  # long and random-looking enough for W009
+
+
+def test_a_production_configuration_passes_the_django_deploy_checklist():
+    result = run_settings(
+        "import django, os; os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings';"
+        "django.setup(); from django.core.management import call_command;"
+        "call_command('check', deploy=True, fail_level='WARNING')",
+        DJANGO_SECRET_KEY=DEPLOY_SECRET,
+        DJANGO_SECURE_SSL_REDIRECT="true",
+        DJANGO_SECURE_HSTS_SECONDS="31536000",
+        DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS="true",
+        DJANGO_SECURE_HSTS_PRELOAD="true",
+        DJANGO_BEHIND_HTTPS_PROXY="true",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no issues" in (result.stdout + result.stderr)
+
+
+def test_https_settings_default_off_for_local_development():
+    result = run_settings(
+        "import config.settings as s;"
+        "print(s.SECURE_SSL_REDIRECT, s.SECURE_HSTS_SECONDS,"
+        " hasattr(s, 'SECURE_PROXY_SSL_HEADER'))",
+        DJANGO_SECRET_KEY=DEPLOY_SECRET,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == ["False", "0", "False"]
+
+
+@pytest.mark.django_db
+def test_responses_carry_anti_framing_and_nosniff_headers(client):
+    response = client.get("/api/v1/health/")
+    assert response["X-Frame-Options"] == "DENY"
+    assert response["X-Content-Type-Options"] == "nosniff"
